@@ -1,0 +1,36 @@
+from django.db import models
+from django.conf import settings
+
+# Create your models here.
+class Notification(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE,
+        related_name='notifications'
+    )
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+class NotificationLog(models.Model):
+    notification = models.ForeignKey(
+        Notification, 
+        on_delete=models.CASCADE,
+        related_name='notification_logs'
+    )
+    sent_via = models.CharField(max_length=50, choices=[
+        ("email", "Email"),
+        ("websocket", "WebSocket"),
+        ("db", "Database"),
+    ])
+    status = models.CharField(max_length=50, choices=[
+        ("pending", "Pending"),
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+        ("delivered", "Delivered"),
+    ], default="pending")
+    timestamp = models.DateTimeField(auto_now_add=True)

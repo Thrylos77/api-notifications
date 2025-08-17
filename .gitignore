@@ -1,0 +1,101 @@
+# -------------------------------
+# Global ignores
+# -------------------------------
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Virtual Environments
+env/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+
+# Secrets configuration files
+.env
+.env.*
+**/.env
+**/.env.*
+secrets.json
+
+# -------------------------------
+# Django
+# -------------------------------
+**/db.sqlite3
+**/__pycache__/
+**/*.py[cod]
+**/*.pyc
+**/staticfiles/
+**/media/
+**/migrations/*.py
+**/migrations/*.pyc
+
+# VSCode
+.vscode/
+.idea/
+*.code-workspace
+
+# -------------------------------
+# Laravel
+# -------------------------------
+**/vendor/
+**/node_modules/
+**/storage/*.key
+**/storage/pail
+**/storage/app/public
+**/storage/debugbar
+**/storage/framework/cache/data
+**/storage/logs
+**/bootstrap/cache/
+**/.gitattributes
+**/.phpunit.result.cache
+**/.phpunit.xml
+
+# Laravel Mix (frontend build)
+**/public/hot
+**/public/build
+**/public/storage
+**/public/mix-manifest.json
+**/npm-debug.log
+**/yarn-error.log
+**/package-lock.json
+**/yarn.lock
+
+# -------------------------------
+# Spring Boot / Java
+# -------------------------------
+**/target/
+**/build/
+**/.gradle/
+**/.mvn/
+**/.classpath
+**/.project
+**/.settings/
+**/.idea/
+**/.vscode/
+**/.DS_Store
+**/out/
+**/bin/
+**/*.iml
+**/logs/
+**/*.log
+**/.lombok/
+
+# Maven specific
+**/pom.xml.tag
+**/pom.xml.releaseBackup
+**/pom.xml.versionsBackup
+**/release.properties
+
+# -------------------------------
+# Test & CI
+# -------------------------------
+**/.pytest_cache/
+**/.coverage
+**/coverage.xml
+**/htmlcov/
+**/junit.xml
