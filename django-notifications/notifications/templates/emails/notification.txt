@@ -1,0 +1,12 @@
+Hello {{ first_name }},
+
+You have a new notification:
+
+{{ title }}
+
+{{ message }}
+
+If you did not expect this, please contact support.
+
+Best regards,
+The Team

@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
-
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -114,6 +114,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.User'
 
+ASGI_APPLICATION = "config.asgi.application"
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -125,8 +127,9 @@ INSTALLED_APPS = [
     'rest_framework',
     'drf_spectacular',
     'drf_spectacular_sidecar',
+    'channels',
     'accounts',
-    'notifications',
+    'notifications.apps.NotificationsConfig',
 ]
 
 REST_FRAMEWORK = {
@@ -139,3 +142,32 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
+
+CHANNEL_LAYERS = {
+    "default": {
+        # In production : Using redis docker service
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+             "hosts": [("redis", 6379)],
+        },
+
+        # For testing
+        #"BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
+
+# Email configuration (use environment variables in prod)
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
+    # Console backend for development
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+
+# Celery configuration
+CELERY_BROKER_URL = "redis://redis:6379/0"
+CELERY_RESULT_BACKEND = "redis://redis:6379/1"

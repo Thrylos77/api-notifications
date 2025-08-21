@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notifications en Temps Réel</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f9;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 320px;
+            z-index: 1000;
+        }
+
+        .notification-toast {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            padding: 16px;
+            margin-bottom: 16px;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.4s cubic-bezier(0.21, 1.02, 0.73, 1);
+            border-left: 4px solid #2196f3;
+        }
+
+        .notification-toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .notification-toast h4 {
+            margin: 0 0 4px;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .notification-toast p {
+            margin: 0;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .page-content {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="page-content">
+        <h1>Page Principale</h1>
+        <p>Les notifications apparaîtront en haut à droite de l'écran.</p>
+        <p>Connectez-vous à l'interface d'administration dans un autre onglet et utilisez le shell Django pour envoyer une notification.</p>
+    </div>
+
+    <div id="notification-container" class="notification-container"></div>
+
+    <script>
+        function connectWebSocket() {
+            console.log("Tentative de connexion au serveur WebSocket...");
+            const socket = new WebSocket(
+                'ws://'
+                + window.location.host
+                + '/ws/notifications/');
+
+            socket.onopen = function() {
+                console.log("Connexion WebSocket établie.");
+            };
+
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                // Le message de la notification est encapsulé dans une clé "message"
+                const notificationData = data.message;
+                
+                console.log("Notification reçue:", notificationData);
+                createNotificationToast(notificationData.title, notificationData.message);
+            };
+
+            socket.onclose = function() {
+                console.log("Connexion WebSocket fermée. Tentative de reconnexion dans 3 secondes...");
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            socket.onerror = function(error) {
+                console.error("Erreur WebSocket:", error);
+            };
+        }
+
+        function createNotificationToast(title, message) {
+            const container = document.getElementById('notification-container');
+            
+            const toast = document.createElement('div');
+            toast.className = 'notification-toast';
+            
+            const toastTitle = document.createElement('h4');
+            toastTitle.textContent = title;
+            
+            const toastMessage = document.createElement('p');
+            toastMessage.textContent = message;
+            
+            toast.appendChild(toastTitle);
+            toast.appendChild(toastMessage);
+            
+            container.appendChild(toast);
+
+            // Forcer le reflow pour que l'animation CSS fonctionne
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 100);
+
+            // Supprimer la notification après 5 secondes
+            setTimeout(() => {
+                toast.classList.remove('show');
+                // Attendre la fin de l'animation de sortie pour supprimer l'élément
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, 5000);
+        }
+
+        // Démarrer la connexion
+        connectWebSocket();
+    </script>
+
+</body>
+</html>

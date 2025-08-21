@@ -1,0 +1,33 @@
+services:
+
+  redis:
+    image: redis:7.4
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: always
+  web:
+    build: 
+      context: .
+    command: 
+      sh -c "poetry run python manage.py migrate && 
+             poetry run daphne --bind 0.0.0.0 --port 8000 config.asgi:application"
+    volumes:
+      - .:/app:delegated # dev convenience; remove in production builds
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+  celery:
+    build: 
+      context: .
+    command: poetry run celery -A config.celery worker --loglevel=info
+    volumes:
+      - .:/app:delegated
+    depends_on:
+      - redis
+    restart: always
+  
+volumes:
+  redis-data:

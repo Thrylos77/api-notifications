@@ -31,6 +31,5 @@ class NotificationLog(models.Model):
         ("pending", "Pending"),
         ("sent", "Sent"),
         ("failed", "Failed"),
-        ("delivered", "Delivered"),
     ], default="pending")
-    timestamp = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
