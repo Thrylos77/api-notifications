@@ -2,9 +2,9 @@ Hello {{ first_name }},
 
 You have a new notification:
 
-{{ title }}
+Title : {{ title }}
 
-{{ message }}
+Message : {{ message }}
 
 If you did not expect this, please contact support.
 

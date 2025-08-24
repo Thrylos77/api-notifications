@@ -50,4 +50,8 @@ def enqueue_notification_email(sender, instance, created, **kwargs):
         return
 
     # fire-and-forget: send the task to the Celery broker (Redis)
-    send_notification_email_task.delay(instance.pk)
+    try:
+        send_notification_email_task.delay(instance.pk)
+        print(f"✅ Email task for notification {instance.pk}")
+    except Exception as e:
+        print(f"❌ Email task error: {e}")

@@ -6,27 +6,39 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
     restart: always
   web:
     build: 
       context: .
+    env_file:
+      - ./.env
     command: 
       sh -c "poetry run python manage.py migrate && 
+             poetry run python manage.py collectstatic --noinput &&
              poetry run daphne --bind 0.0.0.0 --port 8000 config.asgi:application"
     volumes:
       - .:/app:delegated # dev convenience; remove in production builds
     ports:
       - "8000:8000"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
   celery:
     build: 
       context: .
+    env_file:
+      - ./.env
     command: poetry run celery -A config.celery worker --loglevel=info
     volumes:
       - .:/app:delegated
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: always
   
 volumes:

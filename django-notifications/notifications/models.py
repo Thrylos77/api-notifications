@@ -22,7 +22,7 @@ class NotificationLog(models.Model):
         on_delete=models.CASCADE,
         related_name='notification_logs'
     )
-    sent_via = models.CharField(max_length=50, choices=[
+    channel = models.CharField(max_length=50, choices=[
         ("email", "Email"),
         ("websocket", "WebSocket"),
         ("db", "Database"),
@@ -32,4 +32,5 @@ class NotificationLog(models.Model):
         ("sent", "Sent"),
         ("failed", "Failed"),
     ], default="pending")
+    detail = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
