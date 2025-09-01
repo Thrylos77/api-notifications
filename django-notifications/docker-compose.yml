@@ -18,7 +18,8 @@ services:
     env_file:
       - ./.env
     command: 
-      sh -c "poetry run python manage.py migrate && 
+      sh -c "poetry run python manage.py makemigrations && 
+             poetry run python manage.py migrate &&
              poetry run python manage.py collectstatic --noinput &&
              poetry run daphne --bind 0.0.0.0 --port 8000 config.asgi:application"
     volumes:
