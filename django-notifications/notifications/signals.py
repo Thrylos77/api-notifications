@@ -1,57 +1,29 @@
-
+# notifications/signals.py
 """
-Signal handlers to enqueue notification tasks.
+Signal handlers for Notification lifecycle.
 
-Design:
-- When a Notification is created (post_save with created=True), enqueue the
-  asynchronous task to deliver the email, or send a websocket notification.
+- When a Notification is created, schedule the background expansion task
+  (process_notification_targets_task) AFTER DB commit to avoid race conditions.
 """
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
+from django.db import transaction
 from .models import Notification
-from .serializers import NotificationSerializer
-from .tasks import send_notification_email_task
+from .tasks import process_notification_targets_task
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=Notification)
-def notification_created(sender, instance, created, **kwargs):
+def notification_post_save(sender, instance, created, **kwargs):
     """
-    Send a WebSocket notification when a new notification is created.
-    """
-    if created:
-        channel_layer = get_channel_layer()
-        group_name = f"notification"
-        
-        serializer = NotificationSerializer(instance)
-        message = serializer.data
-
-        async_to_sync(channel_layer.group_send)(
-            group_name,
-            {
-                "type": "send_notification",
-                "message": message
-            }
-        )
-
-@receiver(post_save, sender=Notification)
-def enqueue_notification_email(sender, instance, created, **kwargs):
-    """
-    Signal handler that enqueues the email sending Celery task when a Notification
-    object is created.
-
-    Notes:
-    - Do not perform the send operation synchronously inside the handler:
-      signals run in the main request process and must be fast.
-    - We pass only the Notification PK to the task to avoid serializing large data.
+    When a Notification is created, enqueue the expansion task after commit.
+    Keep this signal lightweight — the heavy lifting happens in Celery.
     """
     if not created:
         return
 
-    # fire-and-forget: send the task to the Celery broker (Redis)
-    try:
-        send_notification_email_task.delay(instance.pk)
-        print(f"✅ Email task for notification {instance.pk}")
-    except Exception as e:
-        print(f"❌ Email task error: {e}")
+    # schedule the expansion task after the transaction commits
+    transaction.on_commit(lambda: process_notification_targets_task.delay(instance.pk))
+    logger.debug("Scheduled process_notification_targets_task for Notification %s", instance.pk)

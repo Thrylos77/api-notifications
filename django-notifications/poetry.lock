@@ -463,6 +463,20 @@ argon2 = ["argon2-cffi (>=19.1.0)"]
 bcrypt = ["bcrypt"]
 
 [[package]]
+name = "django-simple-history"
+version = "3.10.1"
+description = "Store model history and view/revert changes from admin site."
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "django_simple_history-3.10.1-py3-none-any.whl", hash = "sha256:e12c27abfcd7e801a9d274d94542549ce8c617b0b384ae69afb161b56cd02ba4"},
+    {file = "django_simple_history-3.10.1.tar.gz", hash = "sha256:040f0c2286bed730312aa15f0acee9e7e6f839c4bcd721693251aa7ec5b65d95"},
+]
+
+[package.dependencies]
+django = ">=4.2"
+
+[[package]]
 name = "djangorestframework"
 version = "3.16.1"
 description = "Web APIs for Django, made easy."
@@ -1325,4 +1339,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "1cde307251c8ba293a202607189fa511370376b1ed5a71a994bba2b97ad05422"
+content-hash = "3854274fb000a5be96302a33106b23c3ef30bf1e84eae52bfd780718ada0945c"

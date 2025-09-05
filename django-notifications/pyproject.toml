@@ -16,6 +16,7 @@ channels-redis = "^4.3.0"
 daphne = "^4.2.1"
 celery = {extras = ["redis"], version = "^5.5.3"}
 whitenoise = "^6.9.0"
+django-simple-history = "^3.10.1"
 
 
 [build-system]

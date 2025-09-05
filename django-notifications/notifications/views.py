@@ -1,129 +1,161 @@
+# notifications/views.py
 from datetime import timedelta
 from django.utils import timezone
 from django.shortcuts import get_object_or_404, render
-from rest_framework import viewsets, permissions, status
+from django.db import transaction
+
+from rest_framework import viewsets, permissions, status, mixins
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from .models import Notification
-from .serializers import NotificationSerializer, NotificationListSerializer, NotificationLogSerializer
 from drf_spectacular.utils import extend_schema, OpenApiParameter
+from .models import *
+from .serializers import *
 
-# Create your views here.
+# -----------------------------------------------------------------------------------
+# NotificationViewSet
+# - Responsible for creation and management of Notification objects (the "message")
+# - Creation will schedule background expansion of targets -> deliveries
+# -----------------------------------------------------------------------------------
 class NotificationViewSet(viewsets.ModelViewSet):
+    """
+    Admin/creator-facing ViewSet for Notification objects.
+    - list/create/update/destroy for admins
+    - creation uses NotificationCreateSerializer which triggers background expansion
+    """
     queryset = Notification.objects.all()
-    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]  # tighten as needed (admins/creators)
     resource = "notification"
-    permission_classes = [permissions.IsAuthenticated]
 
-    permission_code_map = {
-        "list_all": "list_all",
-        "mark_read": "mark_read",
-        "mark_unread": "mark_unread",
-        "soft_delete": "soft_delete",
-    }
-
+    def get_serializer_class(self):
+        if self.action == "create":
+            return NotificationCreateSerializer
+        if self.action == "list":
+            return NotificationListSerializer
+        return NotificationDetailSerializer
+    """
     def get_queryset(self):
         user = self.request.user
-        return self.queryset.filter(user=user, is_archived=False)
-    
+        # By default show notifications created by the requesting user.
+        # Administrators can override or you can extend this to allow listing all.
+        if user.is_staff or user.is_superuser:
+            return self.queryset.all()
+        return self.queryset.filter(user=user)
+    """
     def perform_create(self, serializer):
         """
-        Assign the notification to the user who created it by default.
-        Admins can override in the serializer if needed.
+        Save Notification. If no explicit user is provided, set the current user
+        as the 'author' (backwards compatibility).
         """
-        serializer.save(user=self.request.user)
+        user = serializer.validated_data.get('user') if hasattr(serializer, 'validated_data') else None
+        if not user:
+            # Pass request.user as author by default
+            serializer.save(user=self.request.user)
+        else:
+            serializer.save()
 
-    # Admin action to retrieve all notifications
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name='is_archived', type=bool, location=OpenApiParameter.QUERY,
-                description='Filter notifications by archived status (true/false)'
-            )
-        ]
-    )
-    @action(detail=False, methods=['get'], url_path='all', permission_classes=[permissions.IsAdminUser])
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAdminUser], url_path='all')
     def list_all(self, request):
-        qs = self.queryset.all()
-
-        is_archived = request.query_params.get('is_archived')
-        if is_archived is not None:
-            is_archived_bool = is_archived.lower() in ['true', '1']
-            qs = qs.filter(is_archived=is_archived_bool)
-        
-        qs = self.filter_queryset(qs)
-        serializer = NotificationListSerializer(qs, many=True)
+        """
+        Return all notifications (admin only). Accepts optional ?search params if needed.
+        """
+        qs = self.filter_queryset(self.get_queryset())
+        serializer = NotificationSerializer(qs, many=True)
         return Response(serializer.data)
 
+# -------------------------------------------------
+# NotificationDeliveryViewSet (User-facing endpoints)
+# -------------------------------------------------
+class NotificationDeliveryViewSet(viewsets.GenericViewSet,
+                      mixins.ListModelMixin,
+                      mixins.RetrieveModelMixin
+                      ):
+    """
+    Endpoints for recipients to manage their NotificationDeliveries.
+    - list: list deliveries for the current authenticated user
+    - retrieve: get a single delivery
+    - partial_update: allow limited updates (e.g., ack)
+    - mark_read / mark_unread: set is_read on the delivery
+    - resend: admin-only action to requeue a delivery
+    """
+    queryset = NotificationDelivery.objects.all()
+    serializer_class = NotificationDeliverySerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-    # Change the read status of a notification
-    def _set_read_status(self, pk, read: bool):
-        notification = get_object_or_404(
-            self.queryset.filter(is_archived=False, user=self.request.user),
-            pk=pk
-        )
-        if notification.is_read == read:
-            return None
-        notification.is_read = read
-        notification.save(update_fields=['is_read'])
-        return notification
-    
-    # Mark a notification as read
-    @action(detail=True, methods=['post'], serializer_class=None, permission_classes=[permissions.IsAuthenticated])
+    def get_queryset(self):
+        """
+        Default queryset: deliveries for the current user.
+        Assumes resolvers register recipients in namespace 'users' and use the user's PK as identifier.
+        If your project uses a different namespace, adapt the logic here or pass ?namespace=...
+        """
+        user = self.request.user
+        # allow admin to list all if explicitly requested
+        if user.is_staff and self.request.query_params.get('all') == '1':
+            return self.queryset
+
+        # determine namespace/identifier for the current user
+        # default namespace for simple setups is 'users' - change if your project uses another namespace
+        namespace = self.request.query_params.get('namespace', 'users')
+        identifier = str(user.pk)
+
+        return self.queryset.filter(recipient_namespace=namespace, recipient_identifier=identifier).order_by("-created_at")
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def mark_read(self, request, pk=None):
-        notification = self._set_read_status(pk, True)
-        if not notification:
-            return Response({"detail": "Notification already marked as read."}, status=status.HTTP_409_CONFLICT)
-        return Response({"detail": "Notification marked as read."}, status=status.HTTP_200_OK)
+        """
+        Mark a delivery as read for the current user.
+        """
+        delivery = get_object_or_404(self.get_queryset(), pk=pk)
+        if getattr(delivery, 'is_read', False):
+            return Response({"detail": "Already marked as read."}, status=status.HTTP_409_CONFLICT)
 
-    # Mark a notification as unread
-    @action(detail=True, methods=['post'], serializer_class=None, permission_classes=[permissions.IsAuthenticated])
+        delivery.is_read = True
+        delivery.save(update_fields=['is_read'])
+        return Response({"detail": "Marked as read."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def mark_unread(self, request, pk=None):
-        notification = self._set_read_status(pk, False)
-        if not notification:
-            return Response({"detail": "Notification already marked as unread."}, status=status.HTTP_409_CONFLICT)
-        return Response({"detail": "Notification marked as unread."}, status=status.HTTP_200_OK)
-
-    # Soft delete a notification
-    @action(detail=True, methods=['delete'])
-    def soft_delete(self, request, pk=None):
-        # simple soft-delete: mark user as None or archived flag
-        notification = get_object_or_404(self.queryset, pk=pk, user=request.user)
-        if notification.is_archived:
-            return Response({"detail": "Notification already deleted."}, status=status.HTTP_409_CONFLICT)
-        notification.is_archived = True
-        notification.archived_at = timezone.now()
-        notification.save(update_fields=['is_archived', 'archived_at'])
-        return Response({"detail": "Notification deleted."})
-
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name='days', required=False, type=int, location=OpenApiParameter.QUERY,
-                description='Delete archived notifications older than this number of days'
-            )
-        ]
-    )
-    @action(detail=False, methods=['delete'], url_path='purge-archived')
-    def purge_archived(self, request):
         """
-        Hard delete archived notifications older than a given number of days.
-        Query param: ?days=<number_of_days>
-        Default: 730 days = 2 years
+        Mark a delivery as unread for the current user.
         """
-        days = int(request.query_params.get('days', 730))
-        try:
-            days_threshold = int(days) if days is not None else 730
-        except ValueError:
-            return Response(
-                {"detail": "Invalid 'days' parameter. Must be an integer."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        threshold_date = timezone.now() - timedelta(days=days_threshold)
+        delivery = get_object_or_404(self.get_queryset(), pk=pk)
+        if not getattr(delivery, 'is_read', False):
+            return Response({"detail": "Already marked as unread."}, status=status.HTTP_409_CONFLICT)
 
-        deleted_count, _ = self.queryset.filter(is_archived=True, archived_at__lt=threshold_date).delete()
-        return Response({"detail": f"{deleted_count} archived notifications deleted."}, status=status.HTTP_200_OK)
+        delivery.is_read = False
+        delivery.save(update_fields=['is_read'])
+        return Response({"detail": "Marked as unread."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def resend(self, request, pk=None):
+        """
+        Admin-only: enqueue a resend of a given delivery (re-run send_delivery task).
+        Useful for debugging or manual retries.
+        """
+        delivery = get_object_or_404(self.queryset, pk=pk)
+        # schedule resend AFTER transaction commits to avoid race conditions
+        from .tasks import send_notification_delivery_task
+        transaction.on_commit(lambda: send_notification_delivery_task.delay(delivery.pk))
+        return Response({"detail": "Resend scheduled."}, status=status.HTTP_200_OK)
+
+
+class NotificationHistoryViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only viewset for Notification history (using django-simple-history).
+    """
+    queryset = Notification.history.all()
+    # Keep the HistoricalNotificationSerializer you previously had (ensure it is updated to match new model)
+    from .serializers import HistoricalNotificationSerializer
+    serializer_class = HistoricalNotificationSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.query_params.get("user")
+        if user:
+            qs = qs.filter(user_id=user)
+        return qs
 
 
 def index(request):
-    return render(request, 'html/index.html')
+    return render(request, "html/index.html")
+

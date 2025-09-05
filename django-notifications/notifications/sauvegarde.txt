@@ -1,0 +1,44 @@
+
+# ====================================================
+# View Afer : archived
+# ====================================================
+
+# Soft delete a notification
+    @action(detail=True, methods=['delete'], serializer_class=None, permission_classes=[permissions.IsAuthenticated])
+    def soft_delete(self, request, pk=None):
+        # simple soft-delete: mark user as None or archived flag
+        notification = get_object_or_404(self.queryset, pk=pk, user=request.user)
+        if notification.is_archived:
+            return Response({"detail": "Notification already deleted."}, status=status.HTTP_409_CONFLICT)
+        notification.is_archived = True
+        notification.archived_at = timezone.now()
+        notification.save(update_fields=['is_archived', 'archived_at'])
+        return Response({"detail": "Notification deleted."})
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name='days', required=False, type=int, location=OpenApiParameter.QUERY,
+                description='Delete archived notifications older than this number of days'
+            )
+        ]
+    )
+    @action(detail=False, methods=['delete'], url_path='purge-archived')
+    def purge_archived(self, request):
+        """
+        Hard delete archived notifications older than a given number of days.
+        Query param: ?days=<number_of_days>
+        Default: 730 days = 2 years
+        """
+        days = int(request.query_params.get('days', 730))
+        try:
+            days_threshold = int(days) if days is not None else 730
+        except ValueError:
+            return Response(
+                {"detail": "Invalid 'days' parameter. Must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        threshold_date = timezone.now() - timedelta(days=days_threshold)
+
+        deleted_count, _ = self.queryset.filter(is_archived=True, archived_at__lt=threshold_date).delete()
+        return Response({"detail": f"{deleted_count} archived notifications deleted."}, status=status.HTTP_200_OK)
